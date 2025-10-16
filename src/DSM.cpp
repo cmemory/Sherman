@@ -14,6 +14,12 @@ thread_local LocalAllocator DSM::local_allocator;
 thread_local RdmaBuffer DSM::rbuf[define::kMaxCoro];
 thread_local uint64_t DSM::thread_tag = 0;
 
+uint64_t read_cnt;
+uint64_t read_bytes;
+uint64_t write_cnt;
+uint64_t write_bytes;
+uint64_t cas_cnt;
+
 DSM *DSM::getInstance(const DSMConfig &conf) {
   static DSM *dsm = nullptr;
   static WRLock lock;
@@ -110,6 +116,8 @@ void DSM::initRDMAConnection() {
 
 void DSM::read(char *buffer, GlobalAddress gaddr, size_t size, bool signal,
                CoroContext *ctx) {
+    read_cnt++;
+    read_bytes+=size;
   if (ctx == nullptr) {
     rdmaRead(iCon->data[0][gaddr.nodeID], (uint64_t)buffer,
              remoteInfo[gaddr.nodeID].dsmBase + gaddr.offset, size,
@@ -126,7 +134,6 @@ void DSM::read(char *buffer, GlobalAddress gaddr, size_t size, bool signal,
 void DSM::read_sync(char *buffer, GlobalAddress gaddr, size_t size,
                     CoroContext *ctx) {
   read(buffer, gaddr, size, true, ctx);
-
   if (ctx == nullptr) {
     ibv_wc wc;
     pollWithCQ(iCon->cq, 1, &wc);
@@ -135,7 +142,8 @@ void DSM::read_sync(char *buffer, GlobalAddress gaddr, size_t size,
 
 void DSM::write(const char *buffer, GlobalAddress gaddr, size_t size,
                 bool signal, CoroContext *ctx) {
-
+    write_cnt++;
+    write_bytes+=size;
   if (ctx == nullptr) {
     rdmaWrite(iCon->data[0][gaddr.nodeID], (uint64_t)buffer,
               remoteInfo[gaddr.nodeID].dsmBase + gaddr.offset, size,
@@ -152,7 +160,6 @@ void DSM::write(const char *buffer, GlobalAddress gaddr, size_t size,
 void DSM::write_sync(const char *buffer, GlobalAddress gaddr, size_t size,
                      CoroContext *ctx) {
   write(buffer, gaddr, size, true, ctx);
-
   if (ctx == nullptr) {
     ibv_wc wc;
     pollWithCQ(iCon->cq, 1, &wc);
@@ -171,7 +178,7 @@ void DSM::fill_keys_dest(RdmaOpRegion &ror, GlobalAddress gaddr, bool is_chip) {
 }
 
 void DSM::write_batch(RdmaOpRegion *rs, int k, bool signal, CoroContext *ctx) {
-
+  write_cnt++;
   int node_id = -1;
   for (int i = 0; i < k; ++i) {
 
@@ -179,6 +186,7 @@ void DSM::write_batch(RdmaOpRegion *rs, int k, bool signal, CoroContext *ctx) {
     gaddr.val = rs[i].dest;
     node_id = gaddr.nodeID;
     fill_keys_dest(rs[i], gaddr, rs[i].is_on_chip);
+    write_bytes+=rs[i].size;
   }
 
   if (ctx == nullptr) {
@@ -200,6 +208,8 @@ void DSM::write_batch_sync(RdmaOpRegion *rs, int k, CoroContext *ctx) {
 
 void DSM::write_faa(RdmaOpRegion &write_ror, RdmaOpRegion &faa_ror,
                     uint64_t add_val, bool signal, CoroContext *ctx) {
+    write_cnt++;
+    write_bytes = write_bytes + write_ror.size + faa_ror.size;
   int node_id;
   {
     GlobalAddress gaddr;
@@ -234,6 +244,8 @@ void DSM::write_faa_sync(RdmaOpRegion &write_ror, RdmaOpRegion &faa_ror,
 void DSM::write_cas(RdmaOpRegion &write_ror, RdmaOpRegion &cas_ror,
                     uint64_t equal, uint64_t val, bool signal,
                     CoroContext *ctx) {
+    write_cnt++;
+    write_bytes = write_bytes + write_ror.size + cas_ror.size;
   int node_id;
   {
     GlobalAddress gaddr;
@@ -269,7 +281,8 @@ void DSM::write_cas_sync(RdmaOpRegion &write_ror, RdmaOpRegion &cas_ror,
 void DSM::cas_read(RdmaOpRegion &cas_ror, RdmaOpRegion &read_ror,
                    uint64_t equal, uint64_t val, bool signal,
                    CoroContext *ctx) {
-
+    read_cnt++;
+    read_bytes+=read_ror.size;
   int node_id;
   {
     GlobalAddress gaddr;
@@ -306,7 +319,7 @@ bool DSM::cas_read_sync(RdmaOpRegion &cas_ror, RdmaOpRegion &read_ror,
 
 void DSM::cas(GlobalAddress gaddr, uint64_t equal, uint64_t val,
               uint64_t *rdma_buffer, bool signal, CoroContext *ctx) {
-
+    cas_cnt++;
   if (ctx == nullptr) {
     rdmaCompareAndSwap(iCon->data[0][gaddr.nodeID], (uint64_t)rdma_buffer,
                        remoteInfo[gaddr.nodeID].dsmBase + gaddr.offset, equal,
@@ -335,6 +348,7 @@ bool DSM::cas_sync(GlobalAddress gaddr, uint64_t equal, uint64_t val,
 
 void DSM::cas_mask(GlobalAddress gaddr, uint64_t equal, uint64_t val,
                    uint64_t *rdma_buffer, uint64_t mask, bool signal) {
+    cas_cnt++;
   rdmaCompareAndSwapMask(iCon->data[0][gaddr.nodeID], (uint64_t)rdma_buffer,
                          remoteInfo[gaddr.nodeID].dsmBase + gaddr.offset, equal,
                          val, iCon->cacheLKey,
@@ -406,6 +420,8 @@ void DSM::read_dm_sync(char *buffer, GlobalAddress gaddr, size_t size,
 
 void DSM::write_dm(const char *buffer, GlobalAddress gaddr, size_t size,
                    bool signal, CoroContext *ctx) {
+    write_cnt++;
+    write_bytes = write_bytes + size;
   if (ctx == nullptr) {
     rdmaWrite(iCon->data[0][gaddr.nodeID], (uint64_t)buffer,
               remoteInfo[gaddr.nodeID].lockBase + gaddr.offset, size,
@@ -432,7 +448,7 @@ void DSM::write_dm_sync(const char *buffer, GlobalAddress gaddr, size_t size,
 
 void DSM::cas_dm(GlobalAddress gaddr, uint64_t equal, uint64_t val,
                  uint64_t *rdma_buffer, bool signal, CoroContext *ctx) {
-
+    cas_cnt++;
   if (ctx == nullptr) {
     rdmaCompareAndSwap(iCon->data[0][gaddr.nodeID], (uint64_t)rdma_buffer,
                        remoteInfo[gaddr.nodeID].lockBase + gaddr.offset, equal,
