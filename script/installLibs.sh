@@ -7,6 +7,7 @@ fi
 cd tmp
 
 sudo apt update
+sudo apt-get -y --force-yes install cmake
 
 # memcached
 sudo apt install -y --force-yes memcached libmemcached-dev

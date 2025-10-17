@@ -73,7 +73,7 @@ int main(int argc, char *argv[]) {
   printf("total read bytes: %llu\n", read_bytes);
   printf("total write cnt: %llu\n", write_cnt);
   printf("total write bytes: %llu\n", write_bytes);
-  printf("total write bytes: %llu\n", cas_cnt);
+  printf("total cas cnt: %llu\n", cas_cnt);
 
     while (true) {
         sleep(1000);
