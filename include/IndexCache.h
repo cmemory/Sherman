@@ -259,8 +259,8 @@ inline void IndexCache::evict_one() {
 }
 
 inline void IndexCache::statistics() {
-  printf("[skiplist node: %ld]  [page cache: %ld]\n", skiplist_node_cnt.load(),
-         all_page_cnt - free_page_cnt.load());
+  printf("[skiplist node: %ld]  [page cache: %ld] [all page cache: %ld]\n", skiplist_node_cnt.load(),
+         all_page_cnt - free_page_cnt.load(), all_page_cnt);
 }
 
 inline void IndexCache::bench() {
