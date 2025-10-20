@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
   printf("total write cnt: %llu\n", write_cnt);
   printf("total write bytes: %llu\n", write_bytes);
   printf("total cas cnt: %llu\n", cas_cnt);
-  tree->index_cache_statistics()
+  tree->index_cache_statistics();
 
     while (true) {
         sleep(1000);
